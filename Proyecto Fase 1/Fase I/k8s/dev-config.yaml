@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-dev
+  namespace: saf1
+data:
+  DB_HOST: "35.184.59.66"
+  INGRESS_HOST: "dev-ingress-ip"

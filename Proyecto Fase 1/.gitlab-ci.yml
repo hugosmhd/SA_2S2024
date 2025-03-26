@@ -1,0 +1,163 @@
+image: docker:latest
+
+variables:
+  CI_REGISTRY_USER: $CI_REGISTRY_USER  # Usuario de GitLab (se obtiene automáticamente de GitLab CI/CD)
+  CI_REGISTRY_PASSWORD: $CI_REGISTRY_PASSWORD  # Contraseña de GitLab (se obtiene automáticamente de GitLab CI/CD)
+  CI_REGISTRY_IMAGE: $CI_REGISTRY_IMAGE  # Dirección del registro de GitLab donde se almacenarán las imágenes
+  CI_REGISTRY: $CI_REGISTRY  # Dirección del registro de GitLab donde se almacenarán las imágenes
+# services:
+#   - docker:dind  # Docker-in-Docker para habilitar la construcción de imágenes
+before_script:
+  # Autenticación con el registro de GitLab
+  - echo $CI_REGISTRY_IMAGE
+  - echo $CI_REGISTRY_USER
+  - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+
+# post-build solo se ejecuta en develop
+stages:
+  - build
+  # - test
+  - post-build
+  # - delivery
+  - deploy
+services:
+  - docker:19.03.12-dind  # Necesitamos Docker-in-Docker para construir imágenes
+
+
+# Job para el stage de build: construcción de imágenes Docker y subida al registro de GitLab
+build:
+  stage: build
+  script:
+    - docker images -q | xargs -r docker rmi
+    - docker build --build-arg VITE_API_URL="34.173.152.110" -t "$CI_REGISTRY_IMAGE/frontend_sa:latest" ./Fase\ I/Frontend  --no-cache  # Construye la imagen y la etiqueta
+    - docker push "$CI_REGISTRY_IMAGE/frontend_sa:latest"  # Sube la imagen al registro de GitLab
+    - docker --version  # Verifica que Docker esté disponible
+    - docker build -t "$CI_REGISTRY_IMAGE/m1_saf2:latest" ./Fase\ I/Backend/Python/S1  --no-cache  # Construye la imagen y la etiqueta
+    - docker push "$CI_REGISTRY_IMAGE/m1_saf2:latest"  # Sube la imagen al registro de GitLab
+    - docker build -t "$CI_REGISTRY_IMAGE/m2_saf2:latest" ./Fase\ I/Backend/go/m2-productos  --no-cache  # Construye la imagen y la etiqueta
+    - docker push "$CI_REGISTRY_IMAGE/m2_saf2:latest"  # Sube la imagen al registro de GitLab
+    - docker build -t "$CI_REGISTRY_IMAGE/m3_saf2:latest" ./Fase\ I/Backend/Python  --no-cache  # Construye la imagen y la etiqueta
+    - docker push "$CI_REGISTRY_IMAGE/m3_saf2:latest"  # Sube la imagen al registro de GitLab
+    - docker build -t "$CI_REGISTRY_IMAGE/m4_saf2:latest" ./Fase\ I/Backend/node/m4-pagos  --no-cache  # Construye la imagen y la etiqueta
+    - docker push "$CI_REGISTRY_IMAGE/m4_saf2:latest"  # Sube la imagen al registro de GitLab
+    - docker build -t "$CI_REGISTRY_IMAGE/m5_saf2:latest" ./Fase\ I/Backend/go  --no-cache  # Construye la imagen y la etiqueta
+    - docker push "$CI_REGISTRY_IMAGE/m5_saf2:latest"  # Sube la imagen al registro de GitLab
+    - docker build -t "$CI_REGISTRY_IMAGE/m8_saf2:latest" ./Fase\ I/Backend/node/m8-cupones  --no-cache  # Construye la imagen y la etiqueta
+    - docker push "$CI_REGISTRY_IMAGE/m8_saf2:latest"  # Sube la imagen al registro de GitLab
+    - docker build -t "$CI_REGISTRY_IMAGE/m9_saf2:latest" ./Fase\ I/Backend/node/m9-devoluciones --no-cache  # Construye la imagen y la etiqueta
+    - docker push "$CI_REGISTRY_IMAGE/m9_saf2:latest"  # Sube la imagen al registro de GitLab
+  only:
+    refs:
+      - /^feature/([a-zA-Z]|[0-9]|-|_)+$/  # Para ramas de tipo feature
+      - develop  # También para la rama develop
+
+post-build:
+  stage: post-build
+  image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
+  before_script:
+      # Descargar el archivo de credenciales de Secure Files
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+    - download-secure-files --path .secure_files  # Descarga los archivos en la carpeta .secure_files
+    
+    - curl -LO https://dl.k8s.io/release/v1.26.0/bin/linux/amd64/kubectl
+    - chmod +x kubectl
+    - mv kubectl /usr/local/bin/kubectl
+
+    - gcloud components install gke-gcloud-auth-plugin
+    - gcloud auth activate-service-account --key-file .secure_files/nifty-field-443915-p2-9f59228bb80e.json
+    - gcloud container clusters get-credentials cluster-2 --zone us-central1-c --project nifty-field-443915-p2
+  script:
+    # Descargar el archivo de credenciales desde Secure Files
+    - cd ./Fase\ I/k8s
+    
+    - kubectl delete -f m1.yaml -f m2.yaml -f m3.yaml -f m4.yaml -f m5.yaml -f m8.yaml -f m9.yaml  -f ingress.yaml
+    - kubectl apply -f m1.yaml -f m2.yaml -f m3.yaml -f m4.yaml -f m5.yaml -f m8.yaml -f m9.yaml  -f ingress.yaml
+    
+    - kubectl set image deployment/pythonm1-deploy sa-m1=hugoses202002793/m1_saf2:latest -n saf1
+    - kubectl set image deployment/gom2-deploy sa-m2=hugoses202002793/m2_saf2:latest -n saf1
+    - kubectl set image deployment/pythonm3-deploy sa-m3=hugoses202002793/m3_saf2:latest -n saf1
+    - kubectl set image deployment/nodem4-deploy sa-m4=hugoses202002793/m4_saf2:latest -n saf1
+    - kubectl set image deployment/gom5-deploy sa-m5=hugoses202002793/m5_saf2:latest -n saf1
+    - kubectl set image deployment/nodem8-deploy sa-m8=hugoses202002793/m8_saf2:latest -n saf1
+    - kubectl set image deployment/nodem9-deploy sa-m9=hugoses202002793/m9_saf2:latest -n saf1
+    - kubectl get pods -n saf1
+    - echo "Completado"
+  only:
+    refs:
+      - develop  # También para la rama develop
+  
+deploy-dev:
+  stage: post-build
+  needs:
+    - post-build  # El job deploy-dev depende de post-build
+  before_script:
+    - apk update && apk add --no-cache curl bash  # Instalar curl y bash
+    - apt-get update && apt-get install -y curl bash docker.io  # Instalar Docker
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+    - download-secure-files --path .secure_files  # Descarga los archivos en la carpeta .secure_files
+    - chmod 600 .secure_files/vm_dev
+  script:
+    - ssh -o StrictHostKeyChecking=no -i .secure_files/vm_dev root@34.55.243.54 "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD && 
+        docker ps -aq | xargs -r docker stop && 
+        docker ps -aq | xargs -r docker rm && 
+        docker images -q | xargs -r docker rmi -f && 
+        docker run -d -p 3000:3000 hugoses202002793/frontend_sa"
+  only:
+    refs:
+      - develop  # También para la rama develop
+
+
+deploy-stage:
+  stage: deploy
+  image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
+  before_script:
+      # Descargar el archivo de credenciales de Secure Files
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+    - download-secure-files --path .secure_files  # Descarga los archivos en la carpeta .secure_files
+    
+    - curl -LO https://dl.k8s.io/release/v1.26.0/bin/linux/amd64/kubectl
+    - chmod +x kubectl
+    - mv kubectl /usr/local/bin/kubectl
+
+    - gcloud components install gke-gcloud-auth-plugin
+    - gcloud auth activate-service-account --key-file .secure_files/nifty-field-443915-p2-9f59228bb80e.json
+    - gcloud container clusters get-credentials cluster-2 --zone us-central1-c --project nifty-field-443915-p2
+  script:
+    # Descargar el archivo de credenciales desde Secure Files
+    - cd ./Fase\ I/k8s
+    - kubectl set image deployment/pythonm1-deploy sa-m1=hugoses202002793/m1_saf2:latest -n saf1
+    - kubectl set image deployment/gom2-deploy sa-m2=hugoses202002793/m2_saf2:latest -n saf1
+    - kubectl set image deployment/pythonm3-deploy sa-m3=hugoses202002793/m3_saf2:latest -n saf1
+    - kubectl set image deployment/nodem4-deploy sa-m4=hugoses202002793/m4_saf2:latest -n saf1
+    - kubectl set image deployment/gom5-deploy sa-m5=hugoses202002793/m5_saf2:latest -n saf1
+    
+    - kubectl set image deployment/nodem8-deploy sa-m8=hugoses202002793/m8_saf2:latest -n saf1
+    - kubectl set image deployment/nodem9-deploy sa-m9=hugoses202002793/m9_saf2:latest -n saf1
+    - kubectl apply -f m1.yaml -f m2.yaml -f m3.yaml -f m4.yaml -f m5.yaml -f ingress.yaml
+    - kubectl get pods -n saf1
+    - echo "Completado"
+  only:
+    refs:
+      - main  # También para la rama main
+  
+deploy-vm:
+  stage: deploy
+  needs:
+    - deploy-stage  # El job deploy-dev depende de post-build
+  before_script:
+    - apk update && apk add --no-cache curl bash  # Instalar curl y bash
+    - apt-get update && apt-get install -y curl bash docker.io  # Instalar Docker
+    - curl --silent "https://gitlab.com/gitlab-org/incubation-engineering/mobile-devops/download-secure-files/-/raw/main/installer" | bash
+    - download-secure-files --path .secure_files  # Descarga los archivos en la carpeta .secure_files
+    - chmod 600 .secure_files/vm_dev
+  script:
+    - ssh -o StrictHostKeyChecking=no -i .secure_files/vm_dev root@34.55.243.54 "
+        docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD && 
+        docker ps -aq | xargs -r docker stop && 
+        docker ps -aq | xargs -r docker rm && 
+        docker images -q | xargs -r docker rmi -f && 
+        docker run -d -p 3000:3000 hugoses202002793/frontend_sa"
+  only:
+    refs:
+      - main  # También para la rama develop

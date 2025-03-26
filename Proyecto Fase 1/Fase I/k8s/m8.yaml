@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodem8-service
+  namespace: saf1
+spec:
+  type: ClusterIP
+  selector:
+    app: nodem8-deploy
+  ports:
+  - port: 80
+    targetPort: 4002
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodem8-deploy
+  namespace: saf1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nodem8-deploy
+  template:
+    metadata:
+      labels:
+        app: nodem8-deploy
+    spec:
+      containers:
+      - name: sa-m8
+        image: hugoses202002793/m8_saf2:latest
+        env:
+          - name: DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: config-dev
+                key: DB_HOST
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4002

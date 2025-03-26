@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodem4-service
+  namespace: saf1
+spec:
+  type: ClusterIP
+  selector:
+    app: nodem4-deploy
+  ports:
+  - port: 80
+    targetPort: 4000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodem4-deploy
+  namespace: saf1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nodem4-deploy
+  template:
+    metadata:
+      labels:
+        app: nodem4-deploy
+    spec:
+      containers:
+      - name: sa-m4
+        image: hugoses202002793/m4_saf2:latest
+        env:
+          - name: DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: config-dev
+                key: DB_HOST
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 4000

@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gom2-service
+  namespace: saf1
+spec:
+  type: ClusterIP
+  selector:
+    app: gom2-deploy
+  ports:
+  - port: 80
+    targetPort: 3001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gom2-deploy
+  namespace: saf1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gom2-deploy
+  template:
+    metadata:
+      labels:
+        app: gom2-deploy
+    spec:
+      containers:
+      - name: sa-m2
+        image: hugoses202002793/m2_saf2:latest
+        env:
+          - name: DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: config-dev
+                key: DB_HOST
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3001
