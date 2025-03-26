@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: gom5-service
+  namespace: saf1
+spec:
+  type: ClusterIP
+  selector:
+    app: gom5-deploy
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gom5-deploy
+  namespace: saf1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gom5-deploy
+  template:
+    metadata:
+      labels:
+        app: gom5-deploy
+    spec:
+      containers:
+      - name: sa-m5
+        image: hugoses202002793/sa-m5
+        ports:
+        - containerPort: 8080

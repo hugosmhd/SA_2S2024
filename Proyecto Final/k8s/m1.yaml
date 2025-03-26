@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pythonm1-service
+  namespace: saf1
+spec:
+  type: ClusterIP
+  selector:
+    app: pythonm1-deploy
+  ports:
+  - port: 80
+    targetPort: 3005
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pythonm1-deploy
+  namespace: saf1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pythonm1-deploy
+  template:
+    metadata:
+      labels:
+        app: pythonm1-deploy
+    spec:
+      containers:
+      - name: sa-m1
+        image: hugoses202002793/sa-m1
+        ports:
+        - containerPort: 3005
